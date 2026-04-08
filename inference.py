@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import textwrap
 from typing import Dict, List, Optional
 
@@ -21,31 +22,39 @@ TEMPERATURE = 0.3
 MAX_TOKENS = 512
 
 SYSTEM_PROMPT = textwrap.dedent("""\
-You are a structural engineer AI. You design 2D truss bridges in a simulation environment.
+You are a structural engineer AI designing 2D truss bridges.
 
-You interact via JSON actions. Each turn, reply with EXACTLY one JSON object (no markdown, no explanation):
+RESPONSE FORMAT: Reply with EXACTLY one JSON object per turn. No markdown, no explanation.
 {"action_type": "<type>", "params": {<params>}}
 
-Available actions (in recommended order):
+ACTIONS (execute in this order):
 1. select_type: {"bridge_type": "warren_truss"|"pratt_truss"|"howe_truss"|"simply_supported_beam"|"arch"}
 2. add_node: {"node_id": "n1", "x": 0.0, "y": 0.0}
 3. add_member: {"member_id": "m1", "node_start": "n1", "node_end": "n2", "material": "steel"|"concrete"|"timber", "section_area": 0.01}
 4. add_support: {"node_id": "n1", "support_type": "pin"|"roller"}
 5. add_load: {"node_id": "n2", "Fx": 0.0, "Fy": -50.0}
-6. simulate: {} (run structural analysis)
-7. submit: {} (finalize design, only after simulate passes)
+6. simulate: {} -- run structural analysis
+7. submit: {} -- finalize (only after simulate shows structural_status=pass)
 
-Design guidelines:
-- Place supports at both ends of the span (pin on left, roller on right)
-- Bottom chord nodes along y=0, top chord nodes elevated
-- Connect all nodes with members to form a rigid truss
-- Apply the load as a downward force (negative Fy in kN) at the top center or deck nodes
-- Use steel with section_area between 0.005 and 0.02 m²
-- After simulate, check results. If stress_ratio > 1.0, increase section areas. If deflection is high, add more members.
-- Submit only when simulation passes (structural_status == "pass")
+MATERIALS:
+| Material | E (GPa) | Yield (MPa) | Density (kg/m3) | Cost (INR/kg) |
+| Steel    | 200     | 250         | 7850            | 85            |
+| Concrete | 30      | 30          | 2400            | 12            |
+| Timber   | 12      | 40          | 600             | 30            |
+Steel is strongest but heaviest/costliest. Timber is lightest/cheapest but weak.
 
-Units: coordinates in meters, forces in kN, areas in m².
-Reply with ONLY the JSON action object. No other text.""")
+STRUCTURAL ENGINEERING RULES:
+- A stable truss needs triangulation. NEVER place all nodes on the same y-coordinate.
+- Minimum members for stability: 2*nodes - 3.
+- Pin support on one end, roller on the other. Both at y=0 on the span endpoints.
+- Top chord height should be span/4 to span/6 for good structural depth.
+- Larger section_area = stronger but heavier/costlier. Start with 0.005-0.01 m2 for steel.
+- If stress_ratio > 1.0 after simulate: increase section_area or add members.
+- If deflection is too high: increase section_area, add bracing, or increase truss depth.
+- Distribute loads across deck nodes, not just one point.
+
+UNITS: coordinates in meters, forces in kN, areas in m2.
+Reply with ONLY the JSON object.""")
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -90,6 +99,29 @@ def fallback_action(obs) -> Optional[Dict]:
     return None
 
 
+def _extract_json(text: str) -> Optional[Dict]:
+    text = text.strip().strip("`")
+    if text.startswith("json"):
+        text = text[4:].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    match = re.search(r'\{[^{}]*"action_type"[^{}]*\}', text)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def get_model_action(client: OpenAI, obs, history: List[Dict]) -> Optional[Dict]:
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -108,10 +140,11 @@ def get_model_action(client: OpenAI, obs, history: List[Dict]) -> Optional[Dict]
             stream=False,
         )
         text = (completion.choices[0].message.content or "").strip()
-        text = text.strip("`")
-        if text.startswith("json"):
-            text = text[4:].strip()
-        return json.loads(text)
+        parsed = _extract_json(text)
+        if parsed is not None:
+            return parsed
+        print(f"[DEBUG] Could not parse JSON from: {text[:200]}", flush=True)
+        return fallback_action(obs)
     except Exception as exc:
         print(f"[DEBUG] Model request failed: {exc}", flush=True)
         return fallback_action(obs)
