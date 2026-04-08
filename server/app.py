@@ -16,9 +16,11 @@ except Exception as e:
 try:
     from ..models import BridgeForgeAction, BridgeForgeObservation
     from .bridge_forge_environment import BridgeForgeEnvironment
+    from .gradio_app import build_bridge_forge_ui
 except (ImportError, ValueError):
     from models import BridgeForgeAction, BridgeForgeObservation
     from server.bridge_forge_environment import BridgeForgeEnvironment
+    from server.gradio_app import build_bridge_forge_ui
 
 app = create_app(
     BridgeForgeEnvironment,
@@ -26,6 +28,7 @@ app = create_app(
     BridgeForgeObservation,
     env_name="bridge_forge",
     max_concurrent_envs=4,
+    gradio_builder=build_bridge_forge_ui,
 )
 
 STATIC_DIR = "/tmp/bridge_forge_static"

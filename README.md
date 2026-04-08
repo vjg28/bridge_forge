@@ -1,3 +1,16 @@
+---
+title: Bridge Forge Environment Server
+emoji: "\U0001F309"
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+app_port: 8000
+base_path: /web
+tags:
+  - openenv
+---
+
 # BridgeForge — Structural Engineering RL Environment
 
 An RL environment where an AI agent designs 2D truss bridges. Given a real-world scenario in natural language, the agent selects a bridge type, places nodes and members, runs structural simulation (via anastruct), and iterates until the design meets all constraints.
