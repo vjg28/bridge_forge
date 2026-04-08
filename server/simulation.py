@@ -185,7 +185,17 @@ def run_simulation(
     total_mass = sum(p["mass"] for p in member_props.values())
     total_cost = sum(p["cost"] for p in member_props.values())
 
-    structural_status = "pass" if (max_stress_ratio <= 1.0 and len(failed_members_list) == 0) else "fail"
+    span = 0.0
+    if nodes:
+        xs = [n["x"] for n in nodes]
+        span = max(xs) - min(xs)
+    deflection_limit_m = max(span / 10, 0.5)
+    if max_deflection_m > deflection_limit_m:
+        structural_status = "fail"
+    elif max_stress_ratio <= 1.0 and len(failed_members_list) == 0:
+        structural_status = "pass"
+    else:
+        structural_status = "fail"
 
     viz_filename = f"bridge_{uuid.uuid4().hex[:8]}.png"
     viz_path = os.path.join(static_dir, viz_filename)
