@@ -9,10 +9,10 @@ from openai import OpenAI
 from client import BridgeForgeEnv
 from models import BridgeForgeAction
 
-IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME", os.getenv("IMAGE_NAME", ""))
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
 BENCHMARK = "bridge_forge"
 TASKS = ["easy", "medium", "hard"]
@@ -118,8 +118,8 @@ def get_model_action(client: OpenAI, obs, history: List[Dict]) -> Optional[Dict]
 
 
 async def run_task(task_id: str, llm: OpenAI) -> float:
-    if IMAGE_NAME:
-        env = await BridgeForgeEnv.from_docker_image(IMAGE_NAME)
+    if LOCAL_IMAGE_NAME:
+        env = await BridgeForgeEnv.from_docker_image(LOCAL_IMAGE_NAME)
     else:
         base_url = os.getenv("ENV_BASE_URL", "http://localhost:8000")
         env = BridgeForgeEnv(base_url=base_url)
@@ -197,7 +197,7 @@ async def run_task(task_id: str, llm: OpenAI) -> float:
 
 
 async def main() -> None:
-    llm = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    llm = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     scores = []
     for task_id in TASKS:
